@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { AppLogger } from '../common/logger/logger.service';
 
 import { UserService } from './user/user.service';
 import { UserLoginDto } from './dto/user-login.dto';
@@ -11,9 +12,11 @@ export class AuthService {
     constructor(
         private readonly usersService: UserService,
         private readonly jwtService: JwtService,
+        private readonly appLogger: AppLogger,
     ) {}
 
     async validateUser(email: string, pass: string) {
+        this.appLogger.log(`Validando usuario con email: ${email}`);
         // findByEmail debe cargar las relaciones de roles y permisos
         const user = await this.usersService.findByEmail(email);
         if (!user) {
@@ -27,10 +30,12 @@ export class AuthService {
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { passwordHash: _, ...safeUser } = user;
+        this.appLogger.log(`Usuario validado con éxito: ${email}`);
         return safeUser;
     }
 
     async login(userLoginDto: UserLoginDto) {
+        this.appLogger.log(`Intentando iniciar sesión para el usuario con email: ${userLoginDto.email}`);
         const user = await this.validateUser(userLoginDto.email, userLoginDto.password);
 
         // Mapeamos los permisos asociados al rol del usuario
@@ -42,6 +47,7 @@ export class AuthService {
             permissions,
         };
 
+        this.appLogger.log(`Generando token JWT para el usuario con email: ${userLoginDto.email}`);
         return {
             access_token: this.jwtService.sign(payload),
             token_type: 'Bearer',

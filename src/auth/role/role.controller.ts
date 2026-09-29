@@ -1,4 +1,6 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, HttpCode, HttpStatus, UseInterceptors } from '@nestjs/common';
+
+import { CryptoInterceptor } from '../../common/interceptors/crypto.interceptor';
 
 import { PositiveIntPipe } from '../../common/pipes/positive-int-pipe';
 
@@ -6,6 +8,7 @@ import { RoleService } from './role.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 
+@UseInterceptors(CryptoInterceptor)
 @Controller('role')
 export class RoleController {
     constructor(private readonly roleService: RoleService) {}
