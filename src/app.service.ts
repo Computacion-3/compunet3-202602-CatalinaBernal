@@ -1,13 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+
+import { AppLogger } from './common/logger/logger.service';
 
 @Injectable()
 export class AppService {
-    
-    private readonly logger = new Logger(AppService.name);
+    constructor(private readonly logger: AppLogger) {}
 
-  getHello(): string {
-    this.logger.log('El método getHello ha sido invocado');
-    this.logger.debug('Generando respuesta estática para el cliente');
-    return 'Hello World!';
-  }
+    getHello(): string {
+        this.logger.log('El método getHello ha sido invocado');
+        this.logger.debug('Generando respuesta estática para el cliente');
+        return 'Hello World!';
+    }
 }

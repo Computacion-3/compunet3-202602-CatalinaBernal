@@ -1,36 +1,45 @@
-import {
-  Injectable,
-  NestInterceptor,
-  ExecutionContext,
-  CallHandler,
-  BadRequestException,
-} from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
 import * as crypto from 'crypto';
-import { Request } from 'express';
+
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { finalize } from 'rxjs/operators';
+import { Request, Response } from 'express';
+
+import { AppLogger } from '../logger/logger.service';
+
+interface CustomRequest extends Request {
+    correlationId?: string;
+}
 
 @Injectable()
 export class TraceabilityInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const request: Request = context.switchToHttp().getRequest();
-    const response = context.switchToHttp().getResponse();
+    constructor(private readonly logger: AppLogger) {}
 
-    const correlationId = request.headers['x-correlation-id'] || crypto.randomUUID();
+    intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+        const httpContext = context.switchToHttp();
+        const request = httpContext.getRequest<CustomRequest>();
+        const response = httpContext.getResponse<Response>();
 
-    request.headers['x-correlation-id'] = correlationId;
-    response.setHeader('x-correlation-id', correlationId);
+        const headerCid = request.headers['x-correlation-id'];
+        const suppliedCorrelationId = Array.isArray(headerCid) ? headerCid[0] : headerCid;
+        const correlationId = suppliedCorrelationId?.trim() || crypto.randomUUID();
 
-    const now = Date.now();
-    return next.handle().pipe(
-        tap(() => {
-          const responseTime = Date.now() - now;
-          const status = `${response.statusCode} ${response.statusMessage}`;
+        request.correlationId = correlationId;
+        response.setHeader('x-correlation-id', correlationId);
 
-          console.info(
-            `[TRACE] [${request.method} ${request.originalUrl}] [${status}] [Duration: ${responseTime}ms] [CorrelationID: ${correlationId}]`,
-          );
-        })
-    );
-  }
+        const now = Date.now();
+
+        return next.handle().pipe(
+            finalize(() => {
+                const responseTime = Date.now() - now;
+                const statusText = response.statusMessage || 'OK';
+                const status = `${response.statusCode} ${statusText}`;
+                const url = request.originalUrl || request.url;
+
+                const message = `[TRACE] [${request.method} ${url}] [${status}] [Duration: ${responseTime}ms] [CorrelationID: ${correlationId}]`;
+
+                this.logger.logWithTrace(correlationId, 'INFO', message);
+            }),
+        );
+    }
 }

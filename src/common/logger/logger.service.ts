@@ -1,68 +1,66 @@
-import { Injectable, LoggerService, OnModuleDestroy } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { AsyncLocalStorage } from 'async_hooks';
+
+import { Injectable, LoggerService, OnModuleDestroy } from '@nestjs/common';
 
 @Injectable()
 export class AppLogger implements LoggerService, OnModuleDestroy {
-  private logStream: fs.WriteStream;
+    private logStream: fs.WriteStream;
+    private readonly traceContext = new AsyncLocalStorage<string>();
 
-  constructor() {
-    const dateStamp = new Date().toISOString().split('T')[0];
-    const logDir = path.join(process.cwd(), 'logs');
+    constructor() {
+        const dateStamp = new Date().toISOString().split('T')[0];
+        const logDir = path.join(process.cwd(), 'logs');
 
-    // Garantiza la existencia del directorio de almacenamiento
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
+        if (!fs.existsSync(logDir)) {
+            fs.mkdirSync(logDir, { recursive: true });
+        }
+
+        const logFile = path.join(logDir, `app-${dateStamp}.log`);
+        this.logStream = fs.createWriteStream(logFile, { flags: 'a' });
     }
 
-    const logFile = path.join(logDir, `app-${dateStamp}.log`);
-    // Abre el stream en modo append ('a')
-    this.logStream = fs.createWriteStream(logFile, { flags: 'a' });
-  }
-
-  log(message: string) {
-    this.write('LOG', message);
-  }
-
-  error(message: string, trace?: string) {
-    this.write('ERROR', message, trace);
-  }
-
-  warn(message: string) {
-    this.write('WARN', message);
-  }
-
-  debug(message: string) {
-    this.write('DEBUG', message);
-  }
-
-  verbose(message: string) {
-    this.write('VERBOSE', message);
-  }
-
-  logWithTrace(correlationId: string, level: string, message: string): void{
-    const timestamp = new Date().toISOString();
-    const formattedLog = `[${timestamp}] [${level}] [Correlation ID: ${correlationId}] ${message}\n`;
-    this.logStream.write(formattedLog);
-    console.log(formattedLog.trim());
-  }
-
-  private write(level: string, message: string, trace?: string) {
-    const timestamp = new Date().toISOString();
-    const formattedLog = `[${timestamp}] [${level}] ${message}${
-      trace ? '\n[Stack Trace]: ' + trace : ''
-    }\n`;
-
-    // Escritura persistente en disco
-    this.logStream.write(formattedLog);
-
-    // Salida formateada en consola
-    console.log(formattedLog.trim());
-  }
-
-  onModuleDestroy() {
-    if (this.logStream) {
-      this.logStream.end();
+    log(message: string) {
+        this.write('LOG', message);
     }
-  }
+
+    error(message: string, trace?: string) {
+        this.write('ERROR', message, trace);
+    }
+
+    warn(message: string) {
+        this.write('WARN', message);
+    }
+
+    debug(message: string) {
+        this.write('DEBUG', message);
+    }
+
+    verbose(message: string) {
+        this.write('VERBOSE', message);
+    }
+
+    runWithTrace<T>(correlationId: string, callback: () => T): T {
+        return this.traceContext.run(correlationId, callback);
+    }
+
+    logWithTrace(correlationId: string, level: string, message: string): void {
+        this.write(level, message, undefined, correlationId);
+    }
+
+    private write(level: string, message: string, trace?: string, correlationId = this.traceContext.getStore()) {
+        const timestamp = new Date().toISOString();
+        const traceLabel = correlationId ? ` [Correlation ID: ${correlationId}]` : '';
+        const formattedLog = `[${timestamp}] [${level}]${traceLabel} ${message}${trace ? '\n[Stack Trace]: ' + trace : ''}\n`;
+
+        this.logStream.write(formattedLog);
+        console.info(formattedLog.trim());
+    }
+
+    onModuleDestroy() {
+        if (this.logStream) {
+            this.logStream.end();
+        }
+    }
 }
